@@ -1,0 +1,90 @@
+#Trajectory analysis
+
+library(tidyverse)
+library(Seurat)
+library(magrittr)
+library(monocle)
+library(DESeq2)
+library(readxl)
+
+#Extract the top 100 genes from the stable mesenchymal sample (mesHMLE)
+SCdata <- SetIdent(SCdata, value = SCdata$sample)
+sample_markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
+return.threshold = 0.05)
+meshmle <- subset(sample_markers, subset = cluster == c("mesHMLE"))
+
+meshmle %>% group_by(cluster) %>% slice_max(n =100, order_by = avg_log2FC) -> top100
+deg <- top100$gene
+
+#Set up dataset
+DefaultAssay(SCdata) <- 'RNA'
+SCdata <- NormalizeData(SCdata)
+cds <- as.CellDataSet(SCdata)
+
+cds <- estimateSizeFactors(cds)
+cds <- estimateDispersions(cds)
+
+cds <- setOrderingFilter(cds, deg)
+cds <- reduceDimension(cds, max_components = 2, method = 'DDRTree')
+cds <- orderCells(cds)
+
+levels = c("HMLE", "4 d TGF-β", "8 d TGF-β", "12 d TGF-β", "mesHMLE")
+cds$sample <- factor(x = cds$sample, levels = levels)
+
+
+#Figure 3a
+monocle::plot_cell_trajectory(cds, color_by = "seurat_clusters") + 
+  theme(text = element_text(size = 16),
+        legend.text=element_text(size=10), 
+        legend.position = "bottom") 
+
+#Figure 3b
+monocle::plot_cell_trajectory(cds, color_by = "Pseudotime") + facet_wrap(~sample) + 
+  theme(text = element_text(size = 16),
+        legend.text=element_text(size=10), legend.position = "bottom")
+        
+ 
+#Figure 3c
+library(RColorBrewer)
+cols <- brewer.pal(9, "PuBu")
+
+my_pseudo_de <- differentialGeneTest(cds, fullModelFormulaStr = "~sm.ns(Pseudotime)",
+                                     cores = 4)
+
+
+my_pseudo_de %>% arrange(qval) %>% head(50) %>% select(gene_short_name) -> gene_to_cluster
+gene_to_cluster <- gene_to_cluster$gene_short_name
+
+plot_pseudotime_heatmap(cds[gene_to_cluster,],
+                        cluster_rows = FALSE,
+                        hmcols = cols,
+                        num_clusters = 3,
+                        show_rownames = TRUE,
+                        return_heatmap = TRUE) + theme_minimal() + 
+  theme(text = element_text(size = 30))
+        
+        
+        
+        
+        
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
