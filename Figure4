@@ -116,21 +116,107 @@ library(dplyr)
 library(Seurat)
 library(patchwork)
 
+seurat_combined[["percent.mt"]] <- PercentageFeatureSet(seurat_combined, pattern = "^MT-")
+seurat_combined <- subset(seurat_combined, subset = nFeature_RNA > 200 & nFeature_RNA < 80000 & percent.mt < 10) #based on above two plots 
+normdata <- NormalizeData(seurat_combined, normalization.method = "LogNormalize", scale.factor = 10000)
+
+#add sample names
+samples <- c(SBO01 = "HMLE", SBO02 = "4 d TGF-β", SBO03 = "8 d TGF-β", SBO04 = "12 d TGF-β", SBO05 = "mesHMLE", 
+             SBO06 = "4 d TGF-β & PDS", SBO07 = "8 d TGF-β & PDS", SBO08 = "12 d TGF-β & PDS", 
+             SBO09 = "4 d PDS", SBO10 = "8 d PDS", SBO11 = "12 d PDS", SBO12 = "HMLE")
+             
+names <- as.character(samples[normdata$Cell.Assignment])
+normdata <- AddMetaData(normdata, metadata = names, col.name = 'sample')
+
+#Subset for HMLE, 4 d TGF-β, 8 d TGF-β, 12 d TGF-β, mesHMLE samples
+hmle <- subset(x = normdata, subset = sample == c('HMLE'))
+four <- subset(x = normdata, subset = sample == c('4 d PDS'))
+eight<- subset(x = normdata, subset = sample == c('8 d PDS'))
+twelve <- subset(x = normdata, subset = sample == c('12 d PDS'))
+ALL <- merge(hmle, y=c(four, eight, twelve))
+
+var_features <- FindVariableFeatures(ALL, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(var_features)
+scaled_data <- ScaleData(var_features)
+dim_red <- RunPCA(scaled_data, features = VariableFeatures(object = scaled_data))
+print(dim_red[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(dim_red, dims = 1:2, reduction = "pca")
+DimPlot(dim_red, reduction = "pca")
+DimHeatmap(dim_red, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(dim_red, dims = 1:9, cells = 500, balanced = TRUE)
+
+#Dimensionality of the dataset
+dim_red <- JackStraw(dim_red, num.replicate = 100)
+dim_red <- ScoreJackStraw(dim_red, dims = 1:18)
+
+#Cluster the cells
+SCdata <- FindNeighbors(dim_red, dims = 1:18)
+SCdata <- FindClusters(SCdata, resolution = 0.5)
+SCdata <- RunUMAP(SCdata, dims = 1:18)
+SCdata <- RunTSNE(SCdata, dims = 1:18)
 
 
+G4_samples_G4_exp %>%
+  top_n(n = 15, wt = avg_log2FC) -> top15
+
+DotPlot(SCdata, features = features, group.by = "sample") + coord_flip() + xlab('Gene Names') +  ylab('Sample') +
+  scale_colour_gradient2(low = "#a50026", mid = "#f7f7f7", high = "#4575b4")
 
 
+#Figure 4e
+library(Seurat)
+library(data.table)
+library(readr)
+library(GSEABase)
+library(singscore)
+library(ggplot2)
+library(tidyr)
+library(plyr)
+library(ggrepel)
+library(plotly)
+library(BiocParallel)
+library(edgeR)
+library(reshape)
+library(magrittr)
+library(ggsci)
+library(scater)
+library(org.Hs.eg.db)
+library(RColorBrewer)
+library(ggsignif)
 
+SCdata <- DietSeurat(suppressMessages(UpdateSeuratObject(SCdata)))
+sce <- as.SingleCellExperiment(SCdata, assay = "RNA")
+test <- mapIds(org.Hs.eg.db, keys = rownames(sce), keytype = "SYMBOL", column = "ENTREZID")
+rownames(sce) <- uniquifyFeatureNames(rownames(sce), test)
+seurat <- Seurat::as.Seurat(sce)
+DefaultAssay(seurat) <- 'RNA'
+seurat <- NormalizeData(seurat)
+SC_matrix <- as.matrix(GetAssayData(seurat, slot = "data")) 
+sum_exp <- SummarizedExperiment(SC_matrix)
+rankData <- rankGenes(sum_exp)
+scoredf <- simpleScore(rankData, upSet = tgfb_gs_up, downSet = tgfb_gs_dn)
+plotDispersion(scoredf, isInteractive = FALSE)
+scoredf$Sample <- c(seurat@meta.data$sample)
+scoredf$Sample <- factor(scoredf$Sample, levels= c("HMLE", "4 d PDS", "8 d PDS", "12 d PDS"))
 
-
-
-
-
-
-
-
-
-
+ggplot(scoredf, aes(x = Sample, y= TotalScore, fill = Sample)) +
+    geom_boxplot() +
+    xlab("Sample") +
+    ylab("EMT Score") +
+    ggtitle("EMT Score") +
+    scale_fill_brewer(palette = "Blues") +
+  geom_jitter(color="black", size=0.2, alpha=0.3) +
+    theme_minimal() +
+    theme(plot.title = element_blank(),
+          axis.line = element_line(colour = "black"),legend.position = "none", panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          text = element_text(size = 24), axis.text.x=element_text(angle = 45, hjust = 1)) +
+geom_signif(comparisons = list(c("HMLE", "4 d PDS"), c("HMLE", "8 d PDS"),
+                               c("HMLE", "12 d PDS")),
+            test = "wilcox.test", 
+            map_signif_level = c("****"=0.0001 ,"***"=0.001,"**"=0.01,"*"=0.05),
+            textsize = 5, vjust = 0.5, tip_length = 0.01,
+            step_increase = 0.08) + theme(text = element_text(size = 22))
 
 
 
