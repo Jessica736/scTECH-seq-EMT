@@ -1,0 +1,55 @@
+#Combining Cell Ranger output
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+
+#Read channel 1 data
+data_dir1 <- "/Volumes/TOSHIBA EXT/scTECH-seq/Cell ranger/10x-SBO_P1_C1/filtered_feature_bc_matrix"
+list.files(data_dir1) #should show barcodes.tsv, features.tsv, matrix.mtx. Need to change files to .gz
+expression_matrix1 <- Read10X(data.dir = data_dir1)
+seurat_object_ch1 <- CreateSeuratObject(counts = expression_matrix1$"Gene Expression")
+seurat_object_ch1[['SBO']] = CreateAssayObject(counts = expression_matrix1$"Antibody Capture") 
+
+#Read channel 2 data
+data_dir2 <- "/Volumes/TOSHIBA EXT/scTECH-seq/Cell ranger/10x-SBO_P1-C2/filtered_feature_bc_matrix"
+list.files(data_dir2) #should show barcodes.tsv, features.tsv, matrix.mtx. Need to change files to .gz
+expression_matrix2 <- Read10X(data.dir = data_dir2)
+seurat_object_ch2 <- CreateSeuratObject(counts = expression_matrix2$"Gene Expression")
+seurat_object_ch2[['SBO']] = CreateAssayObject(counts = expression_matrix2$"Antibody Capture") 
+
+#Read channel 3 data
+data_dir3 <- "/Volumes/TOSHIBA EXT/scTECH-seq/Cell ranger/10x-SBO_P2_C3/filtered_feature_bc_matrix"
+list.files(data_dir3) #should show barcodes.tsv, features.tsv, matrix.mtx. Need to change files to .gz
+expression_matrix3 <- Read10X(data.dir = data_dir3) 
+seurat_object_ch3 <- CreateSeuratObject(counts = expression_matrix3$"Gene Expression")
+seurat_object_ch3[['SBO']] = CreateAssayObject(counts = expression_matrix3$"Antibody Capture") 
+
+#Read channel 4 data
+data_dir4 <- "/Volumes/TOSHIBA EXT/scTECH-seq/Cell ranger/10x-SBO_P2_C4/filtered_feature_bc_matrix"
+list.files(data_dir4) #should show barcodes.tsv, features.tsv, matrix.mtx. Need to change files to .gz
+expression_matrix4 <- Read10X(data.dir = data_dir4)
+seurat_object_ch4 <- CreateSeuratObject(counts = expression_matrix4$"Gene Expression")
+seurat_object_ch4[['SBO']] = CreateAssayObject(counts = expression_matrix4$"Antibody Capture") 
+
+#Combined channel data 
+seurat_combined <- merge(seurat_object_ch1, y=c(seurat_object_ch2, seurat_object_ch3, seurat_object_ch4))
+print(seurat_combined) 
+save(seurat_combined, file = "combined seurat objects.RData")
+
+## Adding D-score sample barcodes
+#Add Dscore SBO assignment by adding file as metadata
+Category.SBOAssignment.aggr.Dscore <- read.csv("/Volumes/TOSHIBA EXT/scTECH-seq/seurat/Category-SBOAssignment-aggr-Dscore.csv")
+
+#Add Dscore Cell Assignment
+seurat_combined <- AddMetaData(seurat_combined, metadata = Category.SBOAssignment.aggr.Dscore$Cell.Assignment, col.name = 'Cell.Assignment')
+
+
+
+
+
+
+
+
+
+
