@@ -1,0 +1,69 @@
+library(tidyverse)
+library(Seurat)
+library(magrittr)
+library(monocle)
+library(DESeq2)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+
+#Use seurat object made for Figure 2 (TGF-β samples) to identify mesHMLE markers.
+SCdata <- SetIdent(SCdata, value = SCdata$sample)
+sample_markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
+return.threshold = 0.05)
+meshmle <- subset(sample_markers, subset = cluster == c("mesHMLE"))
+
+meshmle %>% group_by(cluster) %>% slice_max(n =1000, order_by = avg_log2FC) -> top1000
+deg <- top1000$gene
+
+
+#Use seurat object made for Figure 6 (TGF-β & PDS samples).
+
+DefaultAssay(SCdata) <- 'RNA'
+SCdata <- NormalizeData(SCdata)
+cds <- as.CellDataSet(SCdata)
+cds <- estimateSizeFactors(cds)
+cds <- estimateDispersions(cds)
+cds <- setOrderingFilter(cds, deg)
+cds <- reduceDimension(cds, max_components = 2, method = 'DDRTree')
+cds <- orderCells(cds)
+
+levels = c("HMLE", "4 d TGF-β & PDS", "8 d TGF-β & PDS", "12 d TGF-β & PDS")
+cds$sample <- factor(x = cds$sample, levels = levels)
+
+##Figure 7a
+monocle::plot_cell_trajectory(cds, color_by = "seurat_clusters") + 
+  theme(text = element_text(size = 16),
+        legend.text=element_text(size=10), 
+        legend.position = "bottom") 
+
+##Figure 7b
+monocle::plot_cell_trajectory(cds, color_by = "Pseudotime") + facet_wrap(~sample) + 
+  theme(text = element_text(size = 16),
+        legend.text=element_text(size=10), legend.position = "bottom")
+        
+
+##Figure 7c
+#Use combined seurat object (full dataset) to subset for HMLE, mesHMLE, 4 d TGF-β, 8 d TGF-β, 12 d TGF-β, 4 d TGF-β & PDS, 
+8 d TGF-β & PDS, 12 d TGF-β & PDS. 
+
+levels = c("HMLE", "mesHMLE","4 d TGF-β", "4 d TGF-β & PDS", "8 d TGF-β", "8 d TGF-β & PDS", "12 d TGF-β", "12 d TGF-β & PDS")
+SCdata$sample <- factor(x = SCdata$sample, levels = levels)
+
+features <- c("KRT19", "IFI6", "C15orf48", "MX1", "IGFBP2", "VIM", "COL1A1", "IGFBP4", "SERPINE2", "KRT5", "AREG", "FGFBP1", 
+  "S100A2", "KRT6A", "KRT14", "KRT17", "CPA4", "BNIP3", "KCNMA1", "DKK1", "S100A14", 
+  "GADD45B", "SNHG12", "JUN", "EGR1", "FOS", "HIST1H2AG", "SAMD9", "HIST1H1C", "HIST1H2AL", "CCNB1", "PLK1", 
+  "ARL6IP1", "DDIT4", "MALAT1", "FN1", "NEAT1", "XIST", "THBS1", "GDF15", "NUPR1", "MDM2", "CDKN1A")
+
+DotPlot(SCdata, features = features, group.by = "sample") + coord_flip() + xlab('Gene Names') +  ylab('Samples') +
+  scale_colour_gradient2(low = "#a50026", mid = "#f7f7f7", high = "#4575b4") +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1))
+
+
+
+
+
+
+
+
