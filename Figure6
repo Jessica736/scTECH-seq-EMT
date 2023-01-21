@@ -1,0 +1,172 @@
+#Load seurat_combined file containing D-score added to metadata. 
+
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(dittoSeq)
+library(ggplot2)
+library(RColorBrewer)
+
+seurat_combined[["percent.mt"]] <- PercentageFeatureSet(seurat_combined, pattern = "^MT-")
+seurat_combined <- subset(seurat_combined, subset = nFeature_RNA > 200 & nFeature_RNA < 80000 & percent.mt < 10) #based on above two plots 
+normdata <- NormalizeData(seurat_combined, normalization.method = "LogNormalize", scale.factor = 10000)
+
+#add sample names
+samples <- c(SBO01 = "HMLE", SBO02 = "4 d TGF-β", SBO03 = "8 d TGF-β", SBO04 = "12 d TGF-β", SBO05 = "mesHMLE", 
+             SBO06 = "4 d TGF-β & PDS", SBO07 = "8 d TGF-β & PDS", SBO08 = "12 d TGF-β & PDS", 
+             SBO09 = "4 d PDS", SBO10 = "8 d PDS", SBO11 = "12 d PDS", SBO12 = "HMLE")
+             
+names <- as.character(samples[normdata$Cell.Assignment])
+normdata <- AddMetaData(normdata, metadata = names, col.name = 'sample')
+
+#Subset for HMLE, 4 d TGF-β, 8 d TGF-β, 12 d TGF-β, mesHMLE samples
+hmle <- subset(x = normdata, subset = sample == c('HMLE'))
+four <- subset(x = normdata, subset = sample == c('4 d TGF-β & PDS'))
+eight<- subset(x = normdata, subset = sample == c('8 d TGF-β & PDS'))
+twelve <- subset(x = normdata, subset = sample == c('12 d TGF-β & PDS'))
+ALL <- merge(hmle, y=c(four, eight, twelve))
+
+var_features <- FindVariableFeatures(ALL, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(var_features)
+scaled_data <- ScaleData(var_features)
+dim_red <- RunPCA(scaled_data, features = VariableFeatures(object = scaled_data))
+print(dim_red[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(dim_red, dims = 1:2, reduction = "pca")
+DimPlot(dim_red, reduction = "pca")
+DimHeatmap(dim_red, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(dim_red, dims = 1:9, cells = 500, balanced = TRUE)
+
+#Dimensionality of the dataset
+dim_red <- JackStraw(dim_red, num.replicate = 100)
+dim_red <- ScoreJackStraw(dim_red, dims = 1:18)
+
+#Cluster the cells
+SCdata <- FindNeighbors(dim_red, dims = 1:18)
+SCdata <- FindClusters(SCdata, resolution = 0.5)
+SCdata <- RunUMAP(SCdata, dims = 1:18)
+SCdata <- RunTSNE(SCdata, dims = 1:18)
+
+
+
+###Figure 3a
+DimPlot(SCdata, reduction = "tsne", pt.size = 0.5) + theme(text = element_text(size = 20))
+
+###Figure 3b
+DimPlot(SCdata, reduction = "umap", pt.size = 0.5) + theme(text = element_text(size = 20))
+
+###Figure 3c
+DimPlot(SCdata, reduction = "umap", group.by = "sample", pt.size = 0.5) + theme(plot.title = element_blank()) +
+  theme(text = element_text(size = 20))
+  
+###Figure 3d
+SCdata$Clusters <- SCdata$seurat_clusters
+dittoBarPlot(SCdata, var = "sample", group.by = "Clusters", 
+             var.labels.reorder = c(4, 2, 3, 1), color.panel = brewer.pal(4, "YlGn"),
+             data.out = FALSE) + 
+  theme(plot.title = element_blank(), legend.position = "bottom",
+        text = element_text(size = 20)) 
+  
+###Figure 3e 
+all_markers.markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, 
+                                      return.thresh = 0.05)
+all_markers.markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 500, order_by = avg_log2FC)
+  
+ all_markers.markers %>%
+  group_by(cluster) %>%
+  top_n(n = 5, wt = avg_log2FC) -> top5
+                                      
+DoHeatmap(SCdata, features = top5$gene, group.by = "seurat_clusters", label = TRUE, size = 3, angle = 38) + 
+  scale_fill_gradientn(colors = RColorBrewer::brewer.pal(n = 9, name = "RdBu")) + guides(colour = F)   
+  
+  
+###Figure 3f
+s.genes <- cc.genes.updated.2019$s.genes
+s.genes <- s.genes[!is.na(match(s.genes, rownames(SCdata)))] # Extract S phase genes from Seurat and align with dataset
+g2m.genes <- cc.genes.updated.2019$g2m.genes
+g2m.genes <- g2m.genes[!is.na(match(g2m.genes, rownames(SCdata)))] # Extract G2M phase genes from Seurat and align with dataset
+cellcycle = CellCycleScoring(SCdata, s.features = s.genes, g2m.features = g2m.genes, set.ident = FALSE) # Adds cell cycle metrics to Seurat metadata
+
+dittoBarPlot(cellcycle, var = "Phase", group.by = "sample", 
+             color.panel = brewer.pal(3, "RdPu"), x.reorder = c(4, 2, 3, 1),
+             data.out = FALSE) + theme(plot.title = element_blank(),
+                                       axis.title.x = element_blank(), 
+                                       text = element_text(colour = "black", size = 24))
+                                       
+                                      
+###Figure 3g
+FeaturePlot(SCdata, features = c("CDH1", "CD24", "EPCAM", "FN1", "SERPINE2", "VIM"), reduction = 'umap', ncol = 3)  
+  
+###Figure 3h
+library(Seurat)
+library(data.table)
+library(readr)
+library(GSEABase)
+library(singscore)
+library(ggplot2)
+library(tidyr)
+library(plyr)
+library(ggrepel)
+library(plotly)
+library(BiocParallel)
+library(edgeR)
+library(reshape)
+library(magrittr)
+library(ggsci)
+library(scater)
+library(org.Hs.eg.db)
+
+
+#Arrange dataset by clusters.
+cluster0 <- subset(x = SCdata, subset = seurat_clusters == c('0'))
+cluster1 <- subset(x = SCdata, subset = seurat_clusters == c('1'))
+cluster2 <- subset(x = SCdata, subset = seurat_clusters == c('2'))
+cluster3 <- subset(x = SCdata, subset = seurat_clusters == c('3'))
+cluster4 <- subset(x = SCdata, subset = seurat_clusters == c('4'))
+cluster5 <- subset(x = SCdata, subset = seurat_clusters == c('5'))
+cluster6 <- subset(x = SCdata, subset = seurat_clusters == c('6'))
+cluster7 <- subset(x = SCdata, subset = seurat_clusters == c('7'))
+cluster8 <- subset(x = SCdata, subset = seurat_clusters == c('8'))
+cluster9 <- subset(x = SCdata, subset = seurat_clusters == c('9'))
+ 
+combined <-  merge(cluster0, y=c(cluster1, cluster2, cluster3, cluster4,
+                                  cluster5, cluster6, cluster7, cluster8, cluster9))
+
+combined <- DietSeurat(suppressMessages(UpdateSeuratObject(combined)))
+sce <- as.SingleCellExperiment(combined, assay = "RNA")
+seurat <- Seurat::as.Seurat(sce)
+DefaultAssay(seurat) <- 'RNA'
+seurat <- NormalizeData(seurat)
+ 
+#To set up the data for analysis using singscore, the count matrix needs to be log normalised and converted into a matrix. 
+#The `as.matrix(GetAssayData(object, slot = "data", …))` 
+#function can be used for the conversion, where the slot is the log normalised count matrix.
+ 
+SC_matrix <- as.matrix(GetAssayData(seurat, slot = "data")) ##want slot = log normalised count matrix
+sum_exp <- SummarizedExperiment(SC_matrix)
+rankData <- rankGenes(sum_exp)
+scoredf <- simpleScore(rankData, upSet = tgfb_gs_up, downSet = tgfb_gs_dn)
+
+plotDispersion(scoredf, isInteractive = FALSE)
+ 
+scoredf$Cluster <- c(seurat@meta.data$seurat_clusters)
+ 
+scoredf$Cluster <- factor(scoredf$Cluster, levels= c("0", "1", "2", "3", "4",
+                                                    "5", "6", "7", 
+                                                    "8", "9"))
+
+ggplot(scoredf, aes(x = Cluster, y= TotalScore, fill = Cluster)) +
+    geom_boxplot() +
+    xlab("Cluster") +
+    ylab("EMT Score") +
+    ggtitle("EMT Score") +
+   geom_jitter(color="black", size=0.2, alpha=0.3) +
+    theme_minimal() +
+    theme(plot.title = element_blank(),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none", panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          text = element_text(size = 18), axis.text.x=element_text(angle = 45, hjust = 1))
+  
