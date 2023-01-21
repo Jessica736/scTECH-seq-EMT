@@ -1,0 +1,136 @@
+Figure 4
+
+#G4Grinder - predicting G-quadruplex sequences
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(GenomicRanges)
+library(IRanges)
+library(org.Hs.eg.db)
+library(dplyr)
+library(GenomicFeatures)
+library(readxl)
+
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene 
+
+#Get promoters
+prs <- promoters(genes(txdb), upstream = 1000, downstream = 1000)
+
+TGFB_genes <- read_excel("TGFB_genes.xlsx") #genes differentially expressed in EMT - identified using Seurat
+
+#make dataframe with  entrezid (for TGFB_DEGS)
+#First, use all markers command in seurat to find markers. Export as dataframe (ie. TGFB_DEGS)
+library(AnnotationDbi)
+geneid <- AnnotationDbi::select(org.Hs.eg.db, sample_markers$gene,columns = 'ENTREZID', 
+                                keytype='ALIAS', multiVals = "filter")
+
+##Find promoters of genes of interest and make gene name come up as a column.
+dge_prs <- as.data.frame(prs[prs$gene_id %in% geneid$EntrezID]) 
+merge(dge_prs, sample_markers, by.x = "gene_id", by.y = "ENTREZID")
+
+#for markers from seurat
+dge_prs <- as.data.frame(prs[prs$gene_id %in% geneid$ENTREZID]) 
+
+#Import bed file 
+G4_hg38 <- read.table("/Volumes/TOSHIBA EXT/Endothelial cells/G4_PQSM3a_cat_40.bed", header = T,
+                      col.names = c("chr", "start", "end","sequence","score","strand"))
+
+G4_dd <- G4_hg38 %>%
+  dplyr::mutate(chr = paste("chr", chr, sep = ""))
+
+#Create a function (ie. create_grange)
+create_grange <- function(x) {
+  GRanges(seqnames = x$chr, ranges = IRanges(x$start, x$end), strand = x$strand, score = x$score, sequence = x$sequence)
+}
+
+#Make Grinder file in Grange 
+G4Grinder_GR <- create_grange(G4_dd)
+
+make_grange <- function(x) {
+  GRanges(seqnames = x$seqnames, ranges = IRanges(x$start, x$end), strand = x$strand, score = x$score, sequence = x$sequence)
+}
+
+G4_dd_prom <- make_grange(dge_prs)
+
+#Overlap Grinder file with promoters of genes of interest
+subset_overlap <- subsetByOverlaps(G4Grinder_GR, G4_dd_prom)
+
+#annotate for gene id
+library(ChIPpeakAnno)
+annoData <- toGRanges(TxDb.Hsapiens.UCSC.hg38.knownGene, feature = "gene")
+subset_overlap_anno <- annotatePeakInBatch(subset_overlap, AnnotationData = annoData)
+subset_overlap_anno <- addGeneIDs(annotatedPeak = subset_overlap_anno, orgAnn = "org.Hs.eg.db", feature_id_type = "entrez_id", IDs2Add = "symbol")
+head(subset_overlap_anno)
+length(subset_overlap_anno)
+
+TGFB_samples_G4s <- as.data.frame(subset_overlap_anno)
+
+
+#List of genes and expression data that have G4s, without duplicates 
+TGFB_samples_G4_exp <- sample_markers %>%
+  dplyr::filter(gene %in% TGFB_samples_G4s$symbol)
+
+
+
+#Gene ontology analysis
+
+library(devtools)
+library(enrichR)
+library(readr)
+listEnrichrSites()
+setEnrichrSite("EnrichR")
+websiteLive <- TRUE
+dbs <- listEnrichrDbs()
+
+if (is.null(dbs)) websiteLive <- FALSE
+if (websiteLive) head(dbs)
+
+dbs_short <- c("GO_Molecular_Function_2021", "GO_Biological_Process_2021", 
+               "GO_Cellular_Component_2021", "KEGG_2021_Human", "Reactome_2015",
+               "MSigDB_Hallmark_2020")
+
+orig_gene_list <- TGFB_samples_G4_exp$avg_log2FC
+names(orig_gene_list) <- TGFB_samples_G4_exp$gene
+gene_list <- sort(orig_gene_list, decreasing = TRUE)
+
+organism = "org.Hs.eg.db"
+library(organism, character.only = TRUE)
+library(clusterProfiler)
+
+#Figure 4b
+gse <- gseGO(geneList = gene_list, ont = "ALL", keyType = "ALIAS",
+             nPerm = 1000, minGSSize = 3, maxGSSize = 800, pvalueCutoff = 0.05,
+             verbose = TRUE, OrgDb = organism, pAdjustMethod = "none")
+             
+dotplot(gse, x = "GeneRatio", color = "pvalue",
+showCategory = 5, split = ".sign", font.size = 10) +
+  theme(text = element_text(size = 14))
+
+
+#Figure 4c
+keg <- if (websiteLive) enriched[["KEGG_2021_Human"]]
+if (websiteLive) plotEnrich(keg, showTerms = 20, numChar = 40, 
+                            y = "Count", orderBy = "P.value") +theme(text = element_text(size = 14))
+
+
+#Figure 4d
+library(dplyr)
+library(Seurat)
+library(patchwork)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
