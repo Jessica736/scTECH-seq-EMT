@@ -1,4 +1,4 @@
-# scTECH-seq-EMT
+# scTECH-seq EMT
 
 This document contains the code explaining how to perform the bioinformatics analysis used in Metastable Intermediates Identified in Human Epithelial to Mesenchymal Transition are Regulated by G-quadruplex DNA Structures. 
 
