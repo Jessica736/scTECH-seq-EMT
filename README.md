@@ -4,6 +4,8 @@ This document contains the code explaining how to perform the bioinformatics ana
 
 A single-cell RNA sequencing analysis of epithelial-to-mesenchymal transition in human mammary epithelial cells, utilising a novel cell hashing method (scTECH-seq). Transcriptional and cellular heterogeneity in this process leads to multiple metastable hybrid E/M states. DNA G-quadruplex structures play can be targeted to regulate expression of EMT regulating genes. 
 
+The R code to deconvolute single cells tagged with SBOs back to their original assignment is available at https://github.com/genomicswa/d-score. 
+
 
 Authors:
 Jessica J. King, Cameron W. Evans, Ulrich D. Kadolsky, Marck Norret,  Munir Iqbal, Clémentine Mercé, Sugandha Bhatia, Philip A. Gregory, Erik W. Thompson, Alka Saxena, Swaminathan Iyer, Nicole M. Smith.
