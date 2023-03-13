@@ -4,6 +4,8 @@ library(dplyr)
 library(Seurat)
 library(patchwork)
 
+#Read in Cell Ranger output files for each channel (barcodes.tsv, features.tsv and matrix.mtx) and combine to make a single seurat object. 
+
 #Read channel 1 data
 data_dir1 <- "/Volumes/TOSHIBA EXT/scTECH-seq/Cell ranger/10x-SBO_P1_C1/filtered_feature_bc_matrix"
 list.files(data_dir1) #should show barcodes.tsv, features.tsv, matrix.mtx. Need to change files to .gz
@@ -39,8 +41,8 @@ save(seurat_combined, file = "combined seurat objects.RData")
 
 #To deconvolute single cells tagged with SBOs use D-Score. Use code available at: https://github.com/genomicswa/d-score. 
 
-## Adding D-score sample barcodes
-#Add Dscore SBO assignment by adding file as metadata
+## Adding D-score sample barcodes. 
+#Add Dscore SBO assignment by adding file as metadata. 
 Category.SBOAssignment.aggr.Dscore <- read.csv("Category-SBOAssignment-aggr-Dscore.csv")
 
 #Add Dscore Cell Assignment
