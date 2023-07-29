@@ -1,70 +1,59 @@
 #Trajectory analysis
 
-library(tidyverse)
+library(monocle3)
+library(ggplot2)
+library(dplyr)
+library(SeuratWrappers)
 library(Seurat)
-library(magrittr)
-library(monocle)
-library(DESeq2)
-library(readxl)
 
-#Extract the top 100 genes from the stable mesenchymal sample (mesHMLE)
-SCdata <- SetIdent(SCdata, value = SCdata$sample)
-sample_markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
-return.threshold = 0.05)
-meshmle <- subset(sample_markers, subset = cluster == c("mesHMLE"))
+#Load seurat object used in Figure 2. 
+DimPlot(SCdata, group.by = c("orig.ident", "ident"))
+cds <- as.cell_data_set(SCdata)
+cds <- cluster_cells(cds, resolution= 6e-4) 
+plot_cells(cds, color_cells_by = "cluster", show_trajectory_graph = FALSE)
 
-meshmle %>% group_by(cluster) %>% slice_max(n =100, order_by = avg_log2FC) -> top100
-deg <- top100$gene
+all_partitions <- unique(cds@clusters$UMAP$partitions)
+all_partitions <- all_partitions[all_partitions != "1"] # set all partitions to 1
+cds@clusters$UMAP$partitions[cds@clusters$UMAP$partitions %in% all_partitions] <- "1"
 
-#Set up dataset
-DefaultAssay(SCdata) <- 'RNA'
-SCdata <- NormalizeData(SCdata)
-cds <- as.CellDataSet(SCdata)
+cds <- learn_graph(cds, use_partition = TRUE, verbose = FALSE)
 
-cds <- estimateSizeFactors(cds)
-cds <- estimateDispersions(cds)
+plot_cells(cds,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=TRUE,
+           graph_label_size = 1.5)
 
-cds <- setOrderingFilter(cds, deg)
-cds <- reduceDimension(cds, max_components = 2, method = 'DDRTree')
-cds <- orderCells(cds)
+cds <- order_cells(cds)
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           cell_size = 0.5,
+           graph_label_size=1.5) + theme(text = element_text(size = 16))
 
-levels = c("HMLE", "4 d TGF-β", "8 d TGF-β", "12 d TGF-β", "mesHMLE")
-cds$sample <- factor(x = cds$sample, levels = levels)
+#order clusters by pseudotime
+head(pseudotime(cds), 10)
+cds$monocle3_pseudotime <- pseudotime(cds)
+data.pseudo <- as.data.frame(colData(cds))
 
+ggplot(data.pseudo, aes(monocle3_pseudotime, seurat_clusters, fill = seurat_clusters)) + geom_boxplot()
 
-#Figure 3a
-monocle::plot_cell_trajectory(cds, color_by = "seurat_clusters") + 
-  theme(text = element_text(size = 16),
-        legend.text=element_text(size=10), 
-        legend.position = "bottom") 
+ggplot(data.pseudo, aes(monocle3_pseudotime, reorder(seurat_clusters, monocle3_pseudotime), fill = seurat_clusters)) +
+  geom_boxplot() + xlab("Pseudotime") + ylab("Clusters")
 
-#Figure 3b
-monocle::plot_cell_trajectory(cds, color_by = "Pseudotime") + facet_wrap(~sample) + 
-  theme(text = element_text(size = 16),
-        legend.text=element_text(size=10), legend.position = "bottom")
-        
- 
-#Figure 3c
-library(RColorBrewer)
-cols <- brewer.pal(9, "PuBu")
+emt_genes <- c("C15orf48", "CD24", "CD44", "ELF3","EPCAM", "FOS", "GAPDH",
+               "IFI6", "IGFBP4", "KRT19", "KRT81", "JUN", "SERPINE1", "S100A2","VIM", "XIST")
 
-my_pseudo_de <- differentialGeneTest(cds, fullModelFormulaStr = "~sm.ns(Pseudotime)",
-                                     cores = 4)
+emt_lineage_cds <- cds[rowData(cds)$gene_short_name %in% emt_genes]
+emt_lineage_cds$Clusters <- emt_lineage_cds$seurat_clusters
+plot_genes_in_pseudotime(emt_lineage_cds, min_expr = 0.5, ncol = 4,
+                         color_cells_by="Clusters") + theme( text = element_text(size = 16)) 
 
 
-my_pseudo_de %>% arrange(qval) %>% head(50) %>% select(gene_short_name) -> gene_to_cluster
-gene_to_cluster <- gene_to_cluster$gene_short_name
 
-plot_pseudotime_heatmap(cds[gene_to_cluster,],
-                        cluster_rows = FALSE,
-                        hmcols = cols,
-                        num_clusters = 3,
-                        show_rownames = TRUE,
-                        return_heatmap = TRUE) + theme_minimal() + 
-  theme(text = element_text(size = 30))
-        
-        
-        
         
         
    
