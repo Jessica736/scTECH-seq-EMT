@@ -8,58 +8,24 @@ library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
 
-#Use seurat object made for Figure 2 (TGF-β samples) to identify mesHMLE markers.
-SCdata <- SetIdent(SCdata, value = SCdata$sample)
-sample_markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
-return.threshold = 0.05)
-meshmle <- subset(sample_markers, subset = cluster == c("mesHMLE"))
 
-meshmle %>% group_by(cluster) %>% slice_max(n =1000, order_by = avg_log2FC) -> top1000
-deg <- top1000$gene
+### Figure 7 ###
+#Load seurat object with all samples (HMLE, mesHMLE, TGF-β, TGF-β & PDS, and PDS).
 
+features <- c("MX1", "C15orf48", "CLDN7", "KRT19", "KLK5", "IGFBP2", "VIM", "IGFBP4", "COL1A1",
+              "BGN", "AREG", "FGFBP1", "KRT5", "CCND2", "KRT6A", "KRT14", "CPA4", "MEST", "KCNMA1",
+              "S100A14", "KRT18", "S100A2", "WFDC2", "GADD45B", "SNHG12", "SNHG1", "EGR1", "FOS",
+              "NDC80", "CCNB1", "KIF20A", "BNIP3", "PLK1", "DST", "NEAT1", "XIST", "MACF1", 
+              "COL4A1", "GDF15", "NUPR1", "MDM2", "CDKN1A", "FDXR")
 
-#Use seurat object made for Figure 6 (TGF-β & PDS samples).
-
-DefaultAssay(SCdata) <- 'RNA'
-SCdata <- NormalizeData(SCdata)
-cds <- as.CellDataSet(SCdata)
-cds <- estimateSizeFactors(cds)
-cds <- estimateDispersions(cds)
-cds <- setOrderingFilter(cds, deg)
-cds <- reduceDimension(cds, max_components = 2, method = 'DDRTree')
-cds <- orderCells(cds)
-
-levels = c("HMLE", "4 d TGF-β & PDS", "8 d TGF-β & PDS", "12 d TGF-β & PDS")
-cds$sample <- factor(x = cds$sample, levels = levels)
-
-##Figure 7a
-monocle::plot_cell_trajectory(cds, color_by = "seurat_clusters") + 
-  theme(text = element_text(size = 16),
-        legend.text=element_text(size=10), 
-        legend.position = "bottom") 
-
-##Figure 7b
-monocle::plot_cell_trajectory(cds, color_by = "Pseudotime") + facet_wrap(~sample) + 
-  theme(text = element_text(size = 16),
-        legend.text=element_text(size=10), legend.position = "bottom")
-        
-
-##Figure 7c
-#Use combined seurat object (full dataset) to subset for HMLE, mesHMLE, 4 d TGF-β, 8 d TGF-β, 12 d TGF-β, 4 d TGF-β & PDS, 
-8 d TGF-β & PDS, 12 d TGF-β & PDS. 
-
-levels = c("HMLE", "mesHMLE","4 d TGF-β", "4 d TGF-β & PDS", "8 d TGF-β", "8 d TGF-β & PDS", "12 d TGF-β", "12 d TGF-β & PDS")
-SCdata$sample <- factor(x = SCdata$sample, levels = levels)
-
-features <- c("KRT19", "IFI6", "C15orf48", "MX1", "IGFBP2", "VIM", "COL1A1", "IGFBP4", "SERPINE2", "KRT5", "AREG", "FGFBP1", 
-  "S100A2", "KRT6A", "KRT14", "KRT17", "CPA4", "BNIP3", "KCNMA1", "DKK1", "S100A14", 
-  "GADD45B", "SNHG12", "JUN", "EGR1", "FOS", "HIST1H2AG", "SAMD9", "HIST1H1C", "HIST1H2AL", "CCNB1", "PLK1", 
-  "ARL6IP1", "DDIT4", "MALAT1", "FN1", "NEAT1", "XIST", "THBS1", "GDF15", "NUPR1", "MDM2", "CDKN1A")
-
-DotPlot(SCdata, features = features, group.by = "sample") + coord_flip() + xlab('Gene Names') +  ylab('Samples') +
-  scale_colour_gradient2(low = "#a50026", mid = "#f7f7f7", high = "#4575b4") +
+g <- DotPlot(SCdata, features = features, group.by = "sample", col.min = -2, col.max = 2) + coord_flip() + xlab('Gene Names') +  
+  ylab('Samples') +
+  scale_colour_gradient2(low = "#4575b4", mid = "#f7f7f7", high = "#a50026") +
   theme(axis.text.x=element_text(angle = 45, hjust = 1))
-
+show(g)
+h <- as.data.frame(g$data)
+write.csv(h, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files 2024/Figure7.csv", 
+          quote = FALSE, row.names = FALSE)
 
 
 
