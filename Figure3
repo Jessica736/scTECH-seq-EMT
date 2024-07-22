@@ -1,19 +1,22 @@
-#Trajectory analysis
+#Trajectory analysis - using Monocle3
 
+#Load packages
 library(monocle3)
 library(ggplot2)
 library(dplyr)
 library(SeuratWrappers)
 library(Seurat)
 
-#Load seurat object used in Figure 2. 
+#load SCdata (seurat object)
+
 DimPlot(SCdata, group.by = c("orig.ident", "ident"))
-cds <- as.cell_data_set(SCdata)
+cds <- as.cell_data_set(SCdata)#if doesn't work restart R
 cds <- cluster_cells(cds, resolution= 6e-4) 
 plot_cells(cds, color_cells_by = "cluster", show_trajectory_graph = FALSE)
-
 all_partitions <- unique(cds@clusters$UMAP$partitions)
-all_partitions <- all_partitions[all_partitions != "1"] # set all partitions to 1
+all_partitions <- all_partitions[all_partitions != "1"]
+
+# set all partitions to 1
 cds@clusters$UMAP$partitions[cds@clusters$UMAP$partitions %in% all_partitions] <- "1"
 
 cds <- learn_graph(cds, use_partition = TRUE, verbose = FALSE)
@@ -26,7 +29,9 @@ plot_cells(cds,
            graph_label_size = 1.5)
 
 cds <- order_cells(cds)
-plot_cells(cds,
+
+### Figure 3a ####
+d <- plot_cells(cds,
            color_cells_by = "pseudotime",
            label_cell_groups=FALSE,
            label_leaves=FALSE,
@@ -34,43 +39,56 @@ plot_cells(cds,
            cell_size = 0.5,
            graph_label_size=1.5) + theme(text = element_text(size = 16))
 
-#order clusters by pseudotime
+e <- as.data.frame(d$data)
+write.csv(e, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFb_pseduo_figure3a.csv", 
+          quote = FALSE, row.names = FALSE)
+
+### Figure 3b ####
 head(pseudotime(cds), 10)
 cds$monocle3_pseudotime <- pseudotime(cds)
 data.pseudo <- as.data.frame(colData(cds))
 
 ggplot(data.pseudo, aes(monocle3_pseudotime, seurat_clusters, fill = seurat_clusters)) + geom_boxplot()
 
-ggplot(data.pseudo, aes(monocle3_pseudotime, reorder(seurat_clusters, monocle3_pseudotime), fill = seurat_clusters)) +
+p <- ggplot(data.pseudo, aes(monocle3_pseudotime, reorder(seurat_clusters, monocle3_pseudotime), fill = seurat_clusters)) +
   geom_boxplot() + xlab("Pseudotime") + ylab("Clusters")
+q <- as.data.frame(p$data)
+write.csv(q, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFb_figure3b.csv", 
+          quote = FALSE, row.names = FALSE)
+
+### Figure 3c ####
+cds <- as.cell_data_set(SCdata, assay = "RNA")
+cds <- estimate_size_factors(cds) #need for plot_genes_pseudotime
+cds@rowRanges@elementMetadata@listData[["gene_short_name"]] <- rownames(SCdata[["RNA"]])
+cds <- preprocess_cds(cds, num_dim = 100)
+cds <- cluster_cells(cds)
+all_partitions <- unique(cds@clusters$UMAP$partitions)
+all_partitions <- all_partitions[all_partitions != "1"]
+
+# set all partitions to 1
+cds@clusters$UMAP$partitions[cds@clusters$UMAP$partitions %in% all_partitions] <- "1"
+
+cds <- learn_graph(cds)
+cds <- order_cells(cds)
+cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=16)
+pr_deg_ids <- row.names(subset(cds_pr_test_res, q_value < 0.05))
+gene_module_df <- find_gene_modules(cds[pr_deg_ids,], resolution=1e-2)
+gene_module_df$id[1:100]
+gene_module_df %>%
+  slice_max(n = 50, order_by = module) -> test.df
+head(pr_deg_ids)
 
 emt_genes <- c("C15orf48", "CD24", "CD44", "ELF3","EPCAM", "FOS", "GAPDH",
                "IFI6", "IGFBP4", "KRT19", "KRT81", "JUN", "SERPINE1", "S100A2","VIM", "XIST")
 
 emt_lineage_cds <- cds[rowData(cds)$gene_short_name %in% emt_genes]
 emt_lineage_cds$Clusters <- emt_lineage_cds$seurat_clusters
-plot_genes_in_pseudotime(emt_lineage_cds, min_expr = 0.5, ncol = 4,
-                         color_cells_by="Clusters") + theme( text = element_text(size = 16)) 
-
-
-
-        
-        
-   
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+f <- plot_genes_in_pseudotime(emt_lineage_cds, min_expr = 0.5, ncol = 4,
+                         color_cells_by="sample") + theme( text = element_text(size = 16)) 
+show(f)
+g <- as.data.frame(f$data)
+write.csv(g, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFb_pseduo_figure3c.csv", 
+          quote = FALSE, row.names = FALSE)
 
 
 
