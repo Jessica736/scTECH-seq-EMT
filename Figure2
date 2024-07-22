@@ -11,6 +11,7 @@ library(dittoSeq)
 library(ggplot2)
 library(RColorBrewer)
 
+#Filter low viability cells
 seurat_combined[["percent.mt"]] <- PercentageFeatureSet(seurat_combined, pattern = "^MT-")
 seurat_combined <- subset(seurat_combined, subset = nFeature_RNA > 200 & nFeature_RNA < 80000 & percent.mt < 10) #based on above two plots 
 normdata <- NormalizeData(seurat_combined, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -51,19 +52,30 @@ SCdata <- FindClusters(SCdata, resolution = 0.5)
 SCdata <- RunUMAP(SCdata, dims = 1:18)
 SCdata <- RunTSNE(SCdata, dims = 1:18)
 
+### UMAP plot - Figure 2b
+f <- DimPlot(SCdata, reduction = "umap", pt.size = 0.5, label = TRUE) + theme(text = element_text(size = 18))
+show(f)
+outputFilename <- "TGFB_umap_clusters.csv"
+write.csv(f[[1]]$data, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_umap_clusters.csv")
 
-
-###Figure 2b
-DimPlot(SCdata, reduction = "tsne", pt.size = 0.5) + theme(text = element_text(size = 20))
-
-###Figure 2c
-DimPlot(SCdata, reduction = "umap", pt.size = 0.5) + theme(text = element_text(size = 20))
-
-###Figure 2d
+### UMAP plot - Figure 2c
 DimPlot(SCdata, reduction = "umap", group.by = "sample", pt.size = 0.5) + theme(plot.title = element_blank()) +
   theme(text = element_text(size = 20))
 
-###Figure 2e
+### Proportion of cells in each cluster
+g <- dittoBarPlot(SCdata, var = "sample", group.by = "seurat_clusters", 
+                  var.labels.reorder = c(4, 2, 3, 1, 5),
+                  color.panel = c("#56B4E9", "#F6EF8E", "#E0AFCA", "#A3A3A3", "#009E73"),
+                  data.out = TRUE) +  ylab("Proportion of cells") +
+  theme(plot.title = element_blank(), legend.position = "bottom", text = element_text(size = 20))
+
+h <- as.data.frame(g$data)
+
+write.csv(h, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_figure2d.csv", 
+          quote = FALSE, row.names = FALSE)
+
+
+### Cell cycle - Figure 2e
 s.genes <- cc.genes.updated.2019$s.genes
 s.genes <- s.genes[!is.na(match(s.genes, rownames(SCdata)))] # Extract S phase genes from Seurat and align with dataset
 g2m.genes <- cc.genes.updated.2019$g2m.genes
@@ -77,24 +89,40 @@ dittoBarPlot(cellcycle, var = "Phase", group.by = "sample",
                                        text = element_text(colour = "black", size = 24))
                                        
                                        
-###Figure 2f   
+### EMT genes - Figure 2f   
+
+FeaturePlot(SCdata, features = c("CD24", "EPCAM","IGFBP2", "VIM", "C15orf48", 
+                                 +                                  "MX1"), reduction = 'umap', ncol = 2)
+f <- FeaturePlot(SCdata, features = c("CDH1", "CD24", "EPCAM", "FN1", "SERPINE1", "VIM"), 
+                   +                  reduction = 'umap', ncol = 3, max.cutoff = 4)
+show(f)
+outputFilename <- "TGFB_featureplot_figure2f.csv"
+write.csv(f[[1]]$data, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_featureplot_figure2f.csv")
+
+
+### Stemness genes - Figure 2g
+
+f <- FeaturePlot(SCdata, features = c("MYC", "FOS", "EGR1", "IRF6", "SOX4", "DNMT1"), 
+                 reduction = 'umap', ncol = 3, max.cutoff = 2)
+show(f)
+outputFilename <- "TGFB_featureplot_figure2g.csv"
+write.csv(f[[1]]$data, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_featureplot_figure2g.csv")
+
+### Cluster markers - Figure 2h
 all_markers.markers <- FindAllMarkers(SCdata, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, 
                                       return.thresh = 0.05)
-all_markers.markers %>%
-  group_by(cluster) %>%
-  slice_max(n = 500, order_by = avg_log2FC)
-  
-FeaturePlot(SCdata, features = c("CDH1", "CD24", "EPCAM", "FN1", "SERPINE2", "VIM"), reduction = 'umap', ncol = 3)
-  
-###Figure 2g
+
 all_markers.markers %>%
   group_by(cluster) %>%
   top_n(n = 5, wt = avg_log2FC) -> top5
                                       
 DoHeatmap(SCdata, features = top5$gene, group.by = "seurat_clusters", label = TRUE, size = 3, angle = 38) + 
   scale_fill_gradientn(colors = RColorBrewer::brewer.pal(n = 9, name = "RdBu")) + guides(colour = F)    
-  
-###Figure 2h
+
+write.csv(all_markers.markers, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_degs_figure2h.csv", 
+          quote = FALSE, row.names = FALSE)
+
+### Singscore - Figure 2i ####
 library(Seurat)
 library(data.table)
 library(readr)
@@ -113,7 +141,6 @@ library(ggsci)
 library(scater)
 library(org.Hs.eg.db)
 
-
 #Arrange dataset by clusters.
 cluster0 <- subset(x = SCdata, subset = seurat_clusters == c('0'))
 cluster1 <- subset(x = SCdata, subset = seurat_clusters == c('1'))
@@ -126,46 +153,53 @@ cluster7 <- subset(x = SCdata, subset = seurat_clusters == c('7'))
 cluster8 <- subset(x = SCdata, subset = seurat_clusters == c('8'))
 cluster9 <- subset(x = SCdata, subset = seurat_clusters == c('9'))
 cluster10 <- subset(x = SCdata, subset = seurat_clusters == c('10'))
- 
+
 combined <-  merge(cluster0, y=c(cluster1, cluster2, cluster3, cluster4,
-                                  cluster5, cluster6, cluster7, cluster8, cluster9, cluster10))
+                                 cluster5, cluster6, cluster7, cluster8, cluster9, cluster10))
+print(combined) #8446 cells
+
+rm(cluster0, cluster1, cluster2, cluster3, cluster4,
+   cluster5, cluster6, cluster7, cluster8, cluster9, cluster10)
 
 combined <- DietSeurat(suppressMessages(UpdateSeuratObject(combined)))
 sce <- as.SingleCellExperiment(combined, assay = "RNA")
+test <- mapIds(org.Hs.eg.db, keys = rownames(sce), keytype = "SYMBOL", column = "ENTREZID")
+rownames(sce) <- uniquifyFeatureNames(rownames(sce), test)
+
 seurat <- Seurat::as.Seurat(sce)
 DefaultAssay(seurat) <- 'RNA'
 seurat <- NormalizeData(seurat)
- 
-#To set up the data for analysis using singscore, the count matrix needs to be log normalised and converted into a matrix. 
-#The `as.matrix(GetAssayData(object, slot = "data", …))` 
-#function can be used for the conversion, where the slot is the log normalised count matrix.
- 
 SC_matrix <- as.matrix(GetAssayData(seurat, slot = "data")) ##want slot = log normalised count matrix
 sum_exp <- SummarizedExperiment(SC_matrix)
 rankData <- rankGenes(sum_exp)
 scoredf <- simpleScore(rankData, upSet = tgfb_gs_up, downSet = tgfb_gs_dn)
+head(scoredf)
 
 plotDispersion(scoredf, isInteractive = FALSE)
- 
+
 scoredf$Cluster <- c(seurat@meta.data$seurat_clusters)
- 
+
 scoredf$Cluster <- factor(scoredf$Cluster, levels= c("0", "1", "2", "3", "4",
-                                                    "5", "6", "7", 
-                                                    "8", "9", "10"))
+                                                     "5", "6", "7", 
+                                                     "8", "9", "10"))
+
+write.csv(scoredf, file = "~/Documents/PhD/Manuscripts/EMT paper/Source data/R csv files/TGFB_singscore_figure2i.csv", 
+          quote = FALSE, row.names = FALSE)
 
 ggplot(scoredf, aes(x = Cluster, y= TotalScore, fill = Cluster)) +
-    geom_boxplot() +
-    xlab("Cluster") +
-    ylab("EMT Score") +
-    ggtitle("EMT Score") +
-   geom_jitter(color="black", size=0.2, alpha=0.3) +
-    theme_minimal() +
-    theme(plot.title = element_blank(),
-          axis.line = element_line(colour = "black"),
-          legend.position = "none", panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          text = element_text(size = 18), axis.text.x=element_text(angle = 45, hjust = 1))
-  
+  geom_boxplot() +
+  xlab("Cluster") +
+  ylab("EMT Score") +
+  ggtitle("EMT Score") +
+  geom_jitter(color="black", size=0.2, alpha=0.3) +
+  theme_minimal() +
+  theme(plot.title = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none", panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 18), axis.text.x=element_text(angle = 45, hjust = 1))
+
+
 
 
 
